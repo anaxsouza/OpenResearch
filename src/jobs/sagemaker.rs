@@ -149,7 +149,8 @@ def submit():
                     "S3DataDistributionType": "FullyReplicated",
                 }},
             }],
-            OutputDataConfig={"S3OutputPath": "s3://%s/%s/output" % (bucket, base)},
+            # SageMaker appends <job>/output/ itself, so this lands beside the run's input.
+            OutputDataConfig={"S3OutputPath": "s3://%s/%s" % (bucket, base.rsplit("/", 1)[0])},
             ResourceConfig={
                 "InstanceType": spec["instanceType"],
                 "InstanceCount": 1,
@@ -1004,6 +1005,10 @@ class session:
             "763104351884.dkr.ecr.sa-east-1.amazonaws.com/pytorch-training:2.5.1-gpu-py311-cu124-ubuntu22.04-sagemaker"
         );
         assert_eq!(create["StoppingCondition"]["MaxRuntimeInSeconds"], 3600);
+        assert_eq!(
+            create["OutputDataConfig"]["S3OutputPath"],
+            "s3://bucket/research/orx"
+        );
         assert_eq!(create["ResourceConfig"]["InstanceCount"], 1);
         assert_eq!(create["Tags"], json!([{"Key": "or_run", "Value": "r"}]));
     }

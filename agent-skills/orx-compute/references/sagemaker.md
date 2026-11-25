@@ -26,8 +26,10 @@ orx exp run <expId> --backend sagemaker --flavor ml.m5.large --image <ecr-image-
   prefix. `ml.g4dn.xlarge` (T4, 16 GB), `ml.g5.xlarge` (A10G, 24 GB),
   `ml.g6.xlarge` (L4, 24 GB); CPU types such as `ml.m5.large`. The account's
   SageMaker training quota for that type and region must be at least 1.
-- Timeout defaults to 4 hours and can be up to 28 days. SageMaker stops the
-  job at the limit, and the run fails as timed out.
+- Timeout defaults to 4 hours and can be up to 28 days. It covers the whole
+  job, including the minutes SageMaker spends downloading the image (about 4 on
+  `ml.g4dn.xlarge` with the default image), so leave room for that. SageMaker
+  stops the job at the limit, and the run fails as timed out.
 - `--image` overrides the default AWS PyTorch Deep Learning Container (GPU or
   CPU by instance family). A custom image needs `bash` and `tar`; the default
   has no image for some regions, which then require `--image`.
