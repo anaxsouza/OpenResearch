@@ -693,6 +693,14 @@ fn observation_error(error: crate::error::Error) -> Observation {
         "error from server (unauthorized)",
         "error from server (forbidden)",
         "you must be logged in to the server",
+        "(expiredtoken",
+        "(unrecognizedclientexception)",
+        "(invalidclienttokenid)",
+        "(accessdenied",
+        "tokenretrievalerror:",
+        "ssotokenloaderror:",
+        "unauthorizedssotokenerror:",
+        "no aws credentials",
     ]
     .iter()
     .any(|rejection| detail.contains(rejection));

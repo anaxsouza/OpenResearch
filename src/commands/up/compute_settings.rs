@@ -326,6 +326,114 @@ pub(super) async fn set_vercel(Json(req): Json<SetVercelReq>) -> ApiResult {
     Ok(Json(vercel_settings_json().await))
 }
 
+// --- sagemaker settings -------------------------------------------------------
+
+use crate::jobs::sagemaker;
+
+const SAGEMAKER_SAVED: [&str; 4] = [
+    sagemaker::ROLE_ARN,
+    sagemaker::S3_URI,
+    sagemaker::REGION,
+    "AWS_PROFILE",
+];
+
+fn sagemaker_process_env() -> bool {
+    SAGEMAKER_SAVED
+        .iter()
+        .any(|key| matches!(sagemaker::setting(key), Some((_, "env"))))
+}
+
+fn sagemaker_source() -> Option<&'static str> {
+    sagemaker::config().ok()?;
+    let synced = [sagemaker::ROLE_ARN, sagemaker::S3_URI]
+        .iter()
+        .any(|key| matches!(sagemaker::setting(key), Some((_, "syncedEnv"))));
+    Some(if synced { "syncedEnv" } else { "env" })
+}
+
+pub(super) async fn sagemaker_settings_json() -> Value {
+    let field = |key: &str| {
+        let value = sagemaker::setting(key);
+        json!({
+            "value": value.as_ref().map(|(v, _)| v),
+            "source": value.as_ref().map(|(_, s)| *s),
+        })
+    };
+    let untouched = [sagemaker::ROLE_ARN, sagemaker::S3_URI]
+        .iter()
+        .all(|key| sagemaker::setting(key).is_none());
+    let (identity, error) = match sagemaker::config() {
+        Err(_) if untouched => (None, None),
+        Err(error) => (None, Some(error.to_string())),
+        Ok(config) => match sagemaker::ensure_env().await {
+            Err(error) => (None, Some(error.to_string())),
+            Ok(()) => match sagemaker::check(&config).await {
+                Ok(identity) => (Some(identity), None),
+                Err(error) => (None, Some(error.to_string())),
+            },
+        },
+    };
+    json!({
+        "configured": sagemaker_source().is_some(),
+        "processEnv": sagemaker_process_env(),
+        "roleArn": field(sagemaker::ROLE_ARN),
+        "s3Uri": field(sagemaker::S3_URI),
+        "region": field(sagemaker::REGION),
+        "profile": field("AWS_PROFILE"),
+        "identity": identity,
+        "error": error,
+    })
+}
+
+pub(super) async fn sagemaker_settings() -> ApiResult {
+    Ok(Json(sagemaker_settings_json().await))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SetSageMakerReq {
+    role_arn: String,
+    s3_uri: String,
+    region: Option<String>,
+    profile: Option<String>,
+}
+
+pub(super) async fn set_sagemaker(Json(req): Json<SetSageMakerReq>) -> ApiResult {
+    if sagemaker_process_env() {
+        return Err(bad_request(
+            "AWS SageMaker settings are set in the process environment. Remove them there to set \
+             up AWS SageMaker here.",
+        ));
+    }
+    let role_arn = req.role_arn.trim().to_string();
+    let s3_uri = req.s3_uri.trim().to_string();
+    sagemaker::check_role_arn(&role_arn).map_err(bad_request)?;
+    sagemaker::check_s3_uri(&s3_uri).map_err(bad_request)?;
+    let optional = |value: Option<String>| {
+        value
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    };
+    let region = optional(req.region);
+    let profile = optional(req.profile);
+    tokio::task::spawn_blocking(move || -> crate::error::Result<()> {
+        crate::config::write_synced_env_vars(&[
+            (sagemaker::ROLE_ARN, &role_arn),
+            (sagemaker::S3_URI, &s3_uri),
+        ])?;
+        for (key, value) in [(sagemaker::REGION, region), ("AWS_PROFILE", profile)] {
+            match value {
+                Some(value) => crate::config::write_synced_env_vars(&[(key, &value)])?,
+                None => crate::config::remove_synced_env_var(key)?,
+            }
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| anyhow!("env write task failed: {e}"))??;
+    Ok(Json(sagemaker_settings_json().await))
+}
+
 // --- modal settings -----------------------------------------------------------
 
 use crate::jobs::modal;
@@ -1537,6 +1645,7 @@ pub(super) fn compute_settings_json(ssh: SshReadiness) -> Value {
     let tinker = crate::jobs::tinker::resolve_api_key_with_source().ok();
     let modal_source = crate::jobs::modal::token_source();
     let vercel_source = crate::jobs::vercel::token_source();
+    let sagemaker_source = sagemaker_source();
     let k8s_settings = k8s::load_settings().ok().flatten();
     let ssh_hosts = list_ssh_hosts().len();
     let slurm_settings = crate::jobs::slurm::load_settings().ok().flatten();
@@ -1646,6 +1755,15 @@ pub(super) fn compute_settings_json(ssh: SshReadiness) -> Value {
                 Some("env") => "VERCEL_* env vars",
                 Some("syncedEnv") => "Token from Environment tab",
                 _ => "No token",
+            },
+        },
+        {
+            "id": "sagemaker",
+            "configured": sagemaker_source.is_some(),
+            "fromEnvironmentTab": sagemaker_source == Some("syncedEnv"),
+            "summary": match sagemaker::setting(sagemaker::S3_URI) {
+                Some((uri, _)) if sagemaker_source.is_some() => format!("Runs stage in {uri}"),
+                _ => "No role or S3 location".to_string(),
             },
         },
         {
@@ -1901,6 +2019,7 @@ pub(crate) async fn show(backend: &str) -> Result<Value> {
         "hf" => Ok(hf_settings().await),
         "modal" => modal_settings().await,
         "vercel" => vercel_settings().await,
+        "sagemaker" => sagemaker_settings().await,
         "tinker" => tinker_settings().await,
         "k8s" => k8s_settings().await,
         "openresearch" => openresearch_settings().await,
@@ -2020,6 +2139,7 @@ pub(crate) async fn configure(backend: &str, body: Value) -> Result<Value> {
         "hf" => set_hf_token(Json(serde_json::from_value(body)?)).await,
         "modal" => set_modal_token(Json(serde_json::from_value(body)?)).await,
         "tinker" => set_tinker_key(Json(serde_json::from_value(body)?)).await,
+        "sagemaker" => set_sagemaker(Json(serde_json::from_value(body)?)).await,
         _ => {
             return Err(anyhow!(
                 "{backend} has no saved configuration; use compute connect or default set."
@@ -2064,6 +2184,10 @@ pub(crate) async fn check(
             Ok(()) => json!({"ready": true}),
             Err(error) => json!({"ready": false, "error": error.to_string()}),
         },
+        "sagemaker" => match sagemaker::preflight(caller_python_overrides).await {
+            Ok(()) => json!({"ready": true}),
+            Err(error) => json!({"ready": false, "error": error.to_string()}),
+        },
         _ => show(backend)
             .await
             .unwrap_or_else(|error| json!({"error": error.to_string()})),
@@ -2095,7 +2219,7 @@ pub(crate) async fn check(
                 && value["sshKeyStatus"] == "matched"
                 && value["error"].is_null()
         }
-        "modal" | "vercel" => value["ready"] == true,
+        "modal" | "vercel" | "sagemaker" => value["ready"] == true,
         _ => false,
     };
     value["ready"] = json!(ready);

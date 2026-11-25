@@ -55,6 +55,7 @@ import {
   mutSaveSlurmSettings,
   mutSaveTinkerKey,
   mutSaveVercelSetup,
+  mutSaveSageMakerSettings,
   mutSetAutoUpdate,
   mutSetComputeDefault,
   mutUpdateProjectSettings,
@@ -121,6 +122,7 @@ import {
   type OpenCodeProvider,
   type K8sSettings,
   type VercelPlan,
+  type SageMakerSettings,
   type RayPreflight,
   type TrackioPreflight,
   type RaySettings,
@@ -1750,6 +1752,120 @@ function VercelSection() {
   );
 }
 
+// --- compute (sagemaker) ---------------------------------------------------------
+
+type SageMakerForm = { roleArn: string; s3Uri: string; region: string; profile: string };
+
+function savedSageMakerForm(s: SageMakerSettings): SageMakerForm {
+  return {
+    roleArn: s.roleArn.value ?? "",
+    s3Uri: s.s3Uri.value ?? "",
+    region: s.region.value ?? "",
+    profile: s.profile.value ?? "",
+  };
+}
+
+function SageMakerSection() {
+  const workspace = useWorkspace();
+  const sQuery = useQuery(workspace.queries.getSageMakerSettingsQuery());
+  const s = sQuery.data ?? null;
+  const [edits, setEdits] = useState<Partial<SageMakerForm>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  if (!s) {
+    return sQuery.error
+      ? <div className="error">{sQuery.error.message}</div>
+      : <LoadingRow><Spinner /> {m.settings_page_checking_sagemaker()}</LoadingRow>;
+  }
+
+  const form = { ...savedSageMakerForm(s), ...edits };
+  const locked = s.processEnv;
+  const changed = Object.keys(edits).length > 0;
+  const canSave = !locked && !saving && changed && form.roleArn.trim() !== "" && form.s3Uri.trim() !== "";
+  const field = (key: keyof SageMakerForm) => ({
+    value: form[key],
+    onChange: (event: React.ChangeEvent<HTMLInputElement>) => setEdits((prev) => ({ ...prev, [key]: event.target.value })),
+    disabled: locked || saving,
+    autoComplete: "off",
+    spellCheck: false,
+  });
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!canSave) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await mutSaveSageMakerSettings.runAsHeadlessPromise(workspace, {
+        roleArn: form.roleArn,
+        s3Uri: form.s3Uri,
+        region: form.region.trim() || null,
+        profile: form.profile.trim() || null,
+      }, {});
+      setEdits({});
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <dl className="m-0 flex items-center justify-between gap-4 text-sm">
+        <dt className="font-medium text-subtext">{m.settings_page_status()}</dt>
+        <dd className="m-0">
+          {!s.configured && !s.error ? (
+            <Badge variant="warning">{m.settings_page_not_configured()}</Badge>
+          ) : s.error ? (
+            <Badge variant="error">{m.settings_sagemaker_cant_connect()}</Badge>
+          ) : (
+            <Badge variant="success">{m.settings_page_ready()}</Badge>
+          )}
+        </dd>
+      </dl>
+      {s.identity && (
+        <p className="m-0 mt-2 text-sm text-subtext break-words">
+          {m.settings_sagemaker_signed_in({ arn: s.identity.arn, region: s.identity.region })}
+        </p>
+      )}
+      {s.error && <p className={COMPUTE_DIAGNOSTIC_CLASS_NAME}>{s.error}</p>}
+      {locked && <p className={SETTINGS_NOTE_CLASS_NAME}>{m.settings_sagemaker_env_override()}</p>}
+      <p className={SETTINGS_NOTE_CLASS_NAME}>{m.settings_sagemaker_credentials_help()}</p>
+      <form className="mt-5 flex flex-col gap-4" onSubmit={submit}>
+        <label className="flex flex-col gap-2 text-sm font-medium text-subtext">
+          {m.settings_sagemaker_role_arn()}
+          <Input type="text" placeholder="arn:aws:iam::123456789012:role/orx-sagemaker" {...field("roleArn")} />
+        </label>
+        <a className="self-start text-sm text-subtext underline" href="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-roles.html" target="_blank" rel="noreferrer">
+          {m.settings_sagemaker_role_help()}
+        </a>
+        <label className="flex flex-col gap-2 text-sm font-medium text-subtext">
+          {m.settings_sagemaker_s3_uri()}
+          <Input type="text" placeholder="s3://my-bucket/orx" {...field("s3Uri")} />
+        </label>
+        <label className="flex flex-col gap-2 text-sm font-medium text-subtext">
+          {m.settings_sagemaker_region()}
+          <Input type="text" placeholder="us-east-1" {...field("region")} />
+          <span className="font-normal">{m.settings_sagemaker_region_hint()}</span>
+        </label>
+        <label className="flex flex-col gap-2 text-sm font-medium text-subtext">
+          {m.settings_sagemaker_profile()}
+          <Input type="text" placeholder="research" {...field("profile")} />
+          <span className="font-normal">{m.settings_sagemaker_profile_hint()}</span>
+        </label>
+        {saveError && <p className="m-0 text-sm text-accent-red break-words">{saveError}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="primary" type="submit" disabled={!canSave}>
+            {saving ? m.common_saving() : m.common_save()}
+          </Button>
+        </div>
+      </form>
+    </>
+  );
+}
+
 // --- compute (ssh) ---------------------------------------------------------------
 
 const CONNECTION_BADGE_IDLE_CLASS = "rounded-sm border-border-strong bg-surface text-subtext";
@@ -2710,6 +2826,7 @@ const TARGET_CARD_DESCRIPTIONS: Record<ComputeTargetId, () => string> = {
   slurm: m.compute_description_slurm,
   ray: m.compute_description_ray,
   vercel: m.compute_description_vercel,
+  sagemaker: m.compute_description_sagemaker,
   openresearch: m.compute_description_openresearch,
 };
 
@@ -2724,6 +2841,7 @@ const TARGET_KIND: Record<ComputeTargetId, string> = {
   slurm: "slurm_job",
   ray: "ray_job",
   vercel: "vercel_job",
+  sagemaker: "sagemaker_job",
   openresearch: "openresearch_job",
 };
 
@@ -2734,10 +2852,11 @@ const FLAVORED_TARGETS: ComputeTargetId[] = [
   "slurm",
   "ray",
   "vercel",
+  "sagemaker",
   "openresearch",
 ];
 /** Of those, the ones where a launch *requires* a flavor. */
-const FLAVOR_REQUIRED: ComputeTargetId[] = ["hf", "modal", "openresearch"];
+const FLAVOR_REQUIRED: ComputeTargetId[] = ["hf", "modal", "sagemaker", "openresearch"];
 
 const FLAVOR_SUGGESTIONS: Partial<Record<ComputeTargetId, string[]>> = {
   hf: ["cpu-basic", "t4-small", "a10g-small", "a10g-large", "a100-large", "h100", "h200"],
@@ -2745,15 +2864,17 @@ const FLAVOR_SUGGESTIONS: Partial<Record<ComputeTargetId, string[]>> = {
   slurm: ["cpu", "gpu", "h100:1", "h100:2", "a100:4"],
   ray: ["cpu", "cpu:2", "gpu", "gpu:1", "gpu:1,cpu:4", "gpu:1,mem:8GiB"],
   vercel: ["cpu", "cpu-1", "cpu-4", "cpu-8", "cpu-16", "cpu-32"],
+  sagemaker: ["ml.g4dn.xlarge", "ml.g5.xlarge", "ml.g6.xlarge", "ml.g5.2xlarge", "ml.g6e.xlarge", "ml.m5.large"],
   openresearch: ["h100_sxm", "h100_sxm:2", "cpu5c", "cpu5g", "cpu5m"],
 };
 
-const QUICK_SETUP_TARGETS: ComputeTargetId[] = ["tinker", "hf", "modal", "ray", "k8s", "vercel"];
+const QUICK_SETUP_TARGETS: ComputeTargetId[] = ["tinker", "hf", "modal", "ray", "k8s", "vercel", "sagemaker"];
 
 const TARGET_USAGE: Partial<Record<ComputeTargetId, () => string>> = {
   tinker: m.compute_usage_tinker,
   hf: m.compute_usage_hf,
   modal: m.compute_usage_modal,
+  sagemaker: m.compute_usage_sagemaker,
   openresearch: m.compute_usage_openresearch,
 };
 
@@ -3216,6 +3337,7 @@ function QuickSetupDialog({ targetId, projectId, remote, cancel, isDisabled, onE
       {targetId === "ray" && <RaySection />}
       {targetId === "k8s" && <K8sSection onEditState={updateEditState} />}
       {targetId === "vercel" && <VercelSection />}
+      {targetId === "sagemaker" && <SageMakerSection />}
     </DialogContent>;
 }
 

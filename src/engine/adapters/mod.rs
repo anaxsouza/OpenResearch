@@ -27,6 +27,7 @@ providers! {
     )),
     ray => ("ray_job", |account| ray::RayAccount { address: account.target()?.into() }),
     vercel => ("vercel_job", |_account| vercel::VercelAccount),
+    sagemaker => ("sagemaker_job", |_account| sagemaker::SageMakerAccount),
 }
 
 #[cfg(all(test, unix))]

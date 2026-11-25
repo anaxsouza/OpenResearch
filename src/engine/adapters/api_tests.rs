@@ -281,6 +281,7 @@ async fn isolated() -> Option<PathBuf> {
     std::env::set_var("HF_TOKEN", "fake");
     std::env::set_var("ORX_MODAL_PYTHON", root.join("bin/modal-python"));
     std::env::set_var("ORX_VERCEL_PYTHON", root.join("bin/vercel-python"));
+    std::env::set_var("ORX_SAGEMAKER_PYTHON", root.join("bin/sagemaker-python"));
     Some(root)
 }
 
@@ -3316,7 +3317,12 @@ async fn providers_reject_credentials_and_preserve_numeric_exits() {
     let Some(root) = isolated().await else {
         return;
     };
-    for launcher in ["modal-python", "vercel-python", "kubectl"] {
+    for launcher in [
+        "modal-python",
+        "vercel-python",
+        "sagemaker-python",
+        "kubectl",
+    ] {
         script(
             &root.join("bin").join(launcher),
             &format!(
@@ -3339,6 +3345,7 @@ esac
         ("hf_job", json!({"id":"job", "status":{"stage":"ERROR", "message":"Job failed with exit code: 7. Reason: Error"}}), ""),
         ("vercel_job", json!({"stage":"ERROR", "exitCode":7}), "vercel.sandbox._internal.errors.SandboxApiError: HTTP 403: Not authorized (code=forbidden)"),
         ("modal_job", json!({"stage":"ERROR", "exitCode":7}), "modal.exception.AuthError: Token is not authorized"),
+        ("sagemaker_job", json!({"stage":"ERROR", "exitCode":7, "region":"sa-east-1"}), "botocore.exceptions.ClientError: An error occurred (ExpiredTokenException) when calling the DescribeTrainingJob operation: The security token included in the request is expired"),
         ("k8s_job", json!({"status":{"conditions":[{"type":"Failed","status":"True","reason":"BackoffLimitExceeded"}]}}), "Error from server (Forbidden): jobs.batch is forbidden"),
     ] {
         let target = if kind == "ray_job" {
@@ -3348,6 +3355,7 @@ esac
         };
         let ids = match kind {
             "vercel_job" => vec!["box".into(), "process".into()],
+            "sagemaker_job" => vec!["job".into(), "sa-east-1".into(), "s3://bucket/orx/job/input/".into()],
             "k8s_job" => vec!["job/job".into()],
             _ => vec!["job".into()],
         };
@@ -3397,6 +3405,12 @@ esac
                 ("SandboxApiError: HTTP 401: Unauthorized", true),
                 (rejection, true),
                 ("connection timed out", false),
+            ],
+            "sagemaker_job" => vec![
+                ("botocore.exceptions.TokenRetrievalError: Error when retrieving token from sso: Token has expired and refresh failed", true),
+                ("botocore.exceptions.ClientError: An error occurred (AccessDeniedException) when calling the DescribeTrainingJob operation: User is not authorized", true),
+                (rejection, true),
+                ("botocore.exceptions.EndpointConnectionError: Could not connect to the endpoint URL", false),
             ],
             "modal_job" => vec![
                 ("GRPCError: (<Status.UNAUTHENTICATED: 16>, 'Token rejected')", true),
@@ -3483,7 +3497,7 @@ async fn provider_404s_end_runs_only_when_they_prove_deletion() {
     let Some(root) = isolated().await else {
         return;
     };
-    for launcher in ["modal-python", "vercel-python"] {
+    for launcher in ["modal-python", "vercel-python", "sagemaker-python"] {
         script(
             &root.join("bin").join(launcher),
             "#!/bin/sh\ncase \"$3\" in status|cancel) printf '{\"missing\":true}' ;; *) exit 1 ;; esac\n",
@@ -3506,6 +3520,7 @@ async fn provider_404s_end_runs_only_when_they_prove_deletion() {
         ("ray", "ray_job", member, true),
         ("modal", "modal_job", member, false),
         ("vercel", "vercel_job", member, false),
+        ("sagemaker", "sagemaker_job", member, false),
     ] {
         std::fs::write(root.join("whoami.json"), whoami).unwrap();
         let target = match kind {
@@ -3515,6 +3530,7 @@ async fn provider_404s_end_runs_only_when_they_prove_deletion() {
         };
         let ids = match kind {
             "vercel_job" => vec!["box".into(), "process".into()],
+            "sagemaker_job" => vec!["job".into(), "sa-east-1".into(), String::new()],
             _ => vec!["job".into()],
         };
         let handle = super::api::test_handle(kind, target, None, ids);
@@ -3591,7 +3607,7 @@ async fn provider_404s_end_runs_only_when_they_prove_deletion() {
             let why = match (kind, state.contact) {
                 ("hf_job", crate::store::Contact::NeedsAuth { cause, .. }) => cause,
                 (
-                    "modal_job" | "vercel_job",
+                    "modal_job" | "vercel_job" | "sagemaker_job",
                     crate::store::Contact::Unreconciled { detail, .. },
                 ) => detail,
                 (_, contact) => panic!("{id}: {contact:?}"),
@@ -4513,10 +4529,12 @@ async fn each_provider_replays_signal_rows_and_spend_without_double_counting() {
     let Some(root) = isolated().await else {
         return;
     };
-    script(
-        &root.join("bin/vercel-python"),
-        "#!/bin/sh\ncat \"$ORX_API_ROOT/signal-log\"\n",
-    );
+    for launcher in ["vercel-python", "sagemaker-python"] {
+        script(
+            &root.join("bin").join(launcher),
+            "#!/bin/sh\ncat \"$ORX_API_ROOT/signal-log\"\n",
+        );
+    }
     script(
         &root.join("bin/modal-python"),
         r#"#!/usr/bin/env python3
@@ -4539,7 +4557,14 @@ else: raise Exception(a)
 "#,
     );
     let endpoint = std::env::var("HF_ENDPOINT").unwrap();
-    for kind in ["hf_job", "modal_job", "vercel_job", "k8s_job", "ray_job"] {
+    for kind in [
+        "hf_job",
+        "modal_job",
+        "vercel_job",
+        "sagemaker_job",
+        "k8s_job",
+        "ray_job",
+    ] {
         let data = root.join(kind);
         std::fs::create_dir_all(&data).unwrap();
         let target = if kind == "ray_job" {
@@ -4553,6 +4578,7 @@ else: raise Exception(a)
         };
         let ids = match kind {
             "vercel_job" => vec!["box".into(), "process".into()],
+            "sagemaker_job" => vec!["job".into(), "sa-east-1".into(), String::new()],
             "k8s_job" => vec!["job/job".into()],
             _ => vec!["job".into()],
         };

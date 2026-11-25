@@ -48,6 +48,12 @@ export function createSettingsQueries(client: WorkspaceClient, api: Api, events:
     staleTime: 30_000,
   });
 
+  const getSageMakerSettingsQuery = () => queryOptions({
+    queryKey: workspaceKey("getSageMakerSettings"),
+    queryFn: ({ signal }) => api.getSageMakerSettings(signal),
+    staleTime: 30_000,
+  });
+
   const getSlurmSettingsQuery = () => queryOptions({
     queryKey: workspaceKey("getSlurmSettings"),
     queryFn: ({ signal }) => api.getSlurmSettings(signal),
@@ -377,6 +383,7 @@ export function createSettingsQueries(client: WorkspaceClient, api: Api, events:
     getK8sSettingsQuery,
     getModalSettingsQuery,
     getVercelSettingsQuery,
+    getSageMakerSettingsQuery,
     getSlurmSettingsQuery,
     getRaySettingsQuery,
     getComputeSettingsQuery,
@@ -487,6 +494,17 @@ export const mutSaveVercelSetup = mutations.define({
     onSuccess((saved) => ws.setScopedQueryData(ws.queries.getVercelSettingsQuery().queryKey, saved));
   },
   describe: "save the Vercel settings",
+  describeResult: null,
+  refetchOnSuccess: false,
+});
+
+export const mutSaveSageMakerSettings = mutations.define({
+  id: "settings/sagemaker",
+  mutate: (ws: Workspace, body: Parameters<Api["saveSageMakerSettings"]>[0]) => ws.api.saveSageMakerSettings(body),
+  optimistic({ args: [ws], onSuccess }) {
+    onSuccess((saved) => ws.setScopedQueryData(ws.queries.getSageMakerSettingsQuery().queryKey, saved));
+  },
+  describe: "save the AWS SageMaker settings",
   describeResult: null,
   refetchOnSuccess: false,
 });

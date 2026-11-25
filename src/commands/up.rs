@@ -1260,6 +1260,10 @@ fn router(state: AppState, remote_auth: Option<RemoteAuth>, reach: up_remote::Re
             get(vercel_settings).post(set_vercel),
         )
         .route("/api/settings/vercel/scopes", post(vercel_scopes_route))
+        .route(
+            "/api/settings/sagemaker",
+            get(sagemaker_settings).post(set_sagemaker),
+        )
         .route("/api/settings/env", get(env_settings).post(set_env_var))
         .route(
             "/api/settings/env/{key}",
@@ -14511,7 +14515,8 @@ mod tests {
             .map(|target| target["id"].as_str().unwrap())
             .collect();
         let vercel = ids.iter().position(|id| *id == "vercel").unwrap();
-        assert_eq!(ids[vercel + 1], "openresearch");
+        assert_eq!(ids[vercel + 1], "sagemaker");
+        assert_eq!(ids[vercel + 2], "openresearch");
         assert!(ids.iter().position(|id| *id == "ray").unwrap() < vercel);
     }
 

@@ -204,7 +204,7 @@ interface Series {
 }
 
 const AGENT_COLORS: Record<string, string> = { "claude-code": "bg-accent-orange", codex: "bg-accent-indigo", opencode: "bg-accent-teal", cursor: "bg-accent-blue" };
-const BACKEND_COLORS: Record<string, string> = { modal_job: "bg-accent-green", hf_job: "bg-accent-amber", openresearch_job: "bg-accent-pink", vercel_job: "bg-accent-purple", tinker_job: "bg-accent-blue" };
+const BACKEND_COLORS: Record<string, string> = { modal_job: "bg-accent-green", hf_job: "bg-accent-amber", openresearch_job: "bg-accent-pink", vercel_job: "bg-accent-purple", sagemaker_job: "bg-accent-orange", tinker_job: "bg-accent-blue" };
 const SPARE_COLORS = ["bg-accent-purple", "bg-accent-pink", "bg-accent-green", "bg-accent-blue", "bg-accent-red", "bg-accent-amber"];
 
 const byTotal = (a: Series, b: Series) => b.total - a.total;

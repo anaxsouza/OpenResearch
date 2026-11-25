@@ -745,6 +745,26 @@ export interface VercelSettings {
   error: string | null;
 }
 
+// --- settings: sagemaker -------------------------------------------------------
+
+export interface SageMakerField {
+  value: string | null;
+  /** "env" when orx's own process environment sets it, which overrides anything saved here. */
+  source: "env" | "syncedEnv" | null;
+}
+
+export interface SageMakerSettings {
+  configured: boolean;
+  processEnv: boolean;
+  roleArn: SageMakerField;
+  s3Uri: SageMakerField;
+  region: SageMakerField;
+  profile: SageMakerField;
+  /** Who the credentials are, proven against AWS; null when not configured or the check failed. */
+  identity: { account: string; arn: string; region: string } | null;
+  error: string | null;
+}
+
 // --- settings: env vars / git / harnesses ------------------------------------
 
 export interface EnvVar {
@@ -978,6 +998,7 @@ export type ComputeTargetId =
   | "slurm"
   | "ray"
   | "vercel"
+  | "sagemaker"
   | "openresearch";
 
 /** Cheap fs/env probe only — "worth trying", not "healthy". Deep health lives
@@ -2801,6 +2822,10 @@ export function createApi(
   const saveVercelSetup = (setup: { token: string | null; teamId: string; projectId: string | null; newProject: string | null }) =>
     post<VercelSettings>("/api/settings/vercel", setup);
 
+  const getSageMakerSettings = (signal?: AbortSignal) => get<SageMakerSettings>("/api/settings/sagemaker", signal);
+  const saveSageMakerSettings = (body: { roleArn: string; s3Uri: string; region: string | null; profile: string | null }) =>
+    post<SageMakerSettings>("/api/settings/sagemaker", body);
+
   const envScope = (projectId?: string) => projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
 
   const getEnvVars = (projectId?: string, signal?: AbortSignal) =>
@@ -3618,6 +3643,8 @@ export function createApi(
     getVercelSettings,
     getVercelScopes,
     saveVercelSetup,
+    getSageMakerSettings,
+    saveSageMakerSettings,
     getEnvVars,
     setEnvVar,
     deleteEnvVar,

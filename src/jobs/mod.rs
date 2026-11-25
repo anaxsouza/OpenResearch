@@ -11,6 +11,7 @@ pub mod modal;
 pub mod openresearch;
 pub mod ray;
 pub mod rental;
+pub mod sagemaker;
 pub mod slurm;
 pub mod ssh;
 pub mod tinker;

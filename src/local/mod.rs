@@ -48,6 +48,7 @@ pub mod projects;
 pub mod ray;
 pub mod remote_cleanup;
 pub mod resolve;
+pub mod sagemaker;
 pub mod share;
 pub mod shell_env;
 pub mod skills;
@@ -110,19 +111,28 @@ pub const BACKENDS: &[&str] = &[
     "slurm",
     "ray",
     "vercel",
+    "sagemaker",
     "openresearch",
 ];
 
 /// Backends whose launches take a `--flavor` (hf/modal/openresearch require
-/// one; vercel's is an optional vCPU count; slurm's is an optional GRES spec;
+/// one; sagemaker's is a required instance type; vercel's is an optional vCPU count; slurm's is an optional GRES spec;
 /// ray's is optional resource hints).
 /// k8s (manifest), ssh (host), and local (this machine's hardware) have no
 /// flavor axis.
-pub const FLAVORED_BACKENDS: &[&str] = &["hf", "modal", "slurm", "ray", "vercel", "openresearch"];
+pub const FLAVORED_BACKENDS: &[&str] = &[
+    "hf",
+    "modal",
+    "slurm",
+    "ray",
+    "vercel",
+    "sagemaker",
+    "openresearch",
+];
 
 /// The subset whose launches FAIL without a `--flavor` — the playbook warns
 /// about these when they're the default with no saved flavor.
-pub const FLAVOR_REQUIRED_BACKENDS: &[&str] = &["hf", "modal", "openresearch"];
+pub const FLAVOR_REQUIRED_BACKENDS: &[&str] = &["hf", "modal", "sagemaker", "openresearch"];
 
 /// The `or_run` / `or_experiment` / `or_project` labels provider jobs carry.
 pub fn run_labels(

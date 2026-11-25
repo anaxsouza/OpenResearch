@@ -273,7 +273,7 @@ pub(crate) const PARENT_TEST_ROOT: &str = "ORX_PARENT_TEST_ROOT";
 /// Variables that move orx's or an agent's state to a directory the user
 /// chose; under test a child gets one only from the test itself.
 #[cfg(test)]
-pub(crate) const REDIRECT_VARS: [&str; 12] = [
+pub(crate) const REDIRECT_VARS: [&str; 14] = [
     "ORX_DATA_DIR",
     "ORX_CACHE_DIR",
     "OPENCODE_CONFIG",
@@ -286,12 +286,14 @@ pub(crate) const REDIRECT_VARS: [&str; 12] = [
     "GROK_HOME",
     "GROK_AUTH_PATH",
     "MODAL_CONFIG_PATH",
+    "AWS_CONFIG_FILE",
+    "AWS_SHARED_CREDENTIALS_FILE",
 ];
 
 /// The credentials, endpoints and models agents and backends read, and the
 /// markers of an agent's shell; a test child sees only those its test sets.
 #[cfg(test)]
-pub(crate) const PROVIDER_VARS: [&str; 41] = [
+pub(crate) const PROVIDER_VARS: [&str; 50] = [
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -325,6 +327,15 @@ pub(crate) const PROVIDER_VARS: [&str; 41] = [
     "TINKER_API_KEY",
     "VERCEL_TOKEN",
     "VERCEL_OIDC_TOKEN",
+    "AWS_PROFILE",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+    "ORX_SAGEMAKER_ROLE_ARN",
+    "ORX_SAGEMAKER_S3_URI",
+    "ORX_SAGEMAKER_REGION",
     "CLAUDECODE",
     "CLAUDE_CODE_ENTRYPOINT",
     "CODEX_THREAD_ID",

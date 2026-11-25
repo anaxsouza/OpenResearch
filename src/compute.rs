@@ -494,6 +494,28 @@ backend_adapter!(
 );
 
 backend_adapter!(
+    SageMakerCompute,
+    "sagemaker",
+    "AWS SageMaker",
+    true,
+    true,
+    true,
+    "S3 input channel",
+    false,
+    preflight | args | {
+        if let Err(error) = crate::jobs::sagemaker::resolve_flavor(args.flavor.as_deref()) {
+            return Ok(not_ready(error.to_string()));
+        }
+        crate::jobs::sagemaker::preflight(&args.caller_python_overrides).await?;
+        ready()
+    },
+    prepare | args,
+    source,
+    run_id,
+    command | crate::local::sagemaker::launch_spec(args, source, run_id, command)
+);
+
+backend_adapter!(
     KubernetesCompute,
     "k8s",
     "Kubernetes",
@@ -636,6 +658,7 @@ pub fn backend(id: &str) -> Result<Box<dyn ComputeBackend>> {
         "slurm" => Ok(Box::new(SlurmCompute)),
         "ray" => Ok(Box::new(RayCompute)),
         "vercel" => Ok(Box::new(VercelCompute)),
+        "sagemaker" => Ok(Box::new(SageMakerCompute)),
         "openresearch" => Ok(Box::new(OpenResearchCompute)),
         _ => Err(anyhow!("Unknown compute backend '{id}'.")),
     }
@@ -758,6 +781,7 @@ pub fn validate_run_args(args: &crate::ExpRunArgs) -> Result<()> {
                  modal (Modal serverless GPUs), k8s (your Kubernetes cluster), ssh (your own box), \
                  slurm (your Slurm cluster), ray (a Ray Jobs cluster), \
                  vercel (Vercel Sandbox microVMs), \
+                 sagemaker (AWS SageMaker training jobs), \
                  openresearch (an ephemeral OpenResearch box), tinker (local controller with remote model compute), \
                  local (this machine).",
                 backend

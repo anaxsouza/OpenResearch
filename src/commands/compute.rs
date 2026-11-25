@@ -155,6 +155,7 @@ pub enum Backend {
     Tinker,
     K8s,
     Vercel,
+    Sagemaker,
     Openresearch,
 }
 impl Backend {
@@ -169,6 +170,7 @@ impl Backend {
             Self::Tinker => "tinker",
             Self::K8s => "k8s",
             Self::Vercel => "vercel",
+            Self::Sagemaker => "sagemaker",
             Self::Openresearch => "openresearch",
         }
     }
@@ -706,6 +708,14 @@ async fn connect(args: &CheckArgs) -> Result<()> {
                 "Vercel Sandbox reads VERCEL_TOKEN, VERCEL_TEAM_ID and VERCEL_PROJECT_ID (or a \
                  VERCEL_OIDC_TOKEN from `vercel env pull`) from the environment or Settings → \
                  Environment. Check them with `orx compute test vercel`."
+            );
+        }
+        Backend::Sagemaker => {
+            eprintln!(
+                "AWS SageMaker signs in with your AWS credentials (AWS_PROFILE, or \
+                 AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY) and needs ORX_SAGEMAKER_ROLE_ARN \
+                 and ORX_SAGEMAKER_S3_URI, from the environment or Settings → Environment. Check \
+                 them with `orx compute test sagemaker`."
             );
         }
         Backend::Local | Backend::Ray | Backend::K8s | Backend::Ssh | Backend::Slurm => {}

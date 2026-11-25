@@ -3,7 +3,7 @@ use std::process::Command;
 
 /// Variables that would lead a launched `orx` or agent to the developer's own
 /// state, credentials or session: `config::REDIRECT_VARS` and `PROVIDER_VARS`.
-const CLEARED: [&str; 52] = [
+const CLEARED: [&str; 63] = [
     "ORX_DATA_DIR",
     "ORX_CACHE_DIR",
     "OPENCODE_CONFIG",
@@ -16,6 +16,8 @@ const CLEARED: [&str; 52] = [
     "GROK_HOME",
     "GROK_AUTH_PATH",
     "MODAL_CONFIG_PATH",
+    "AWS_CONFIG_FILE",
+    "AWS_SHARED_CREDENTIALS_FILE",
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_BASE_URL",
@@ -48,6 +50,15 @@ const CLEARED: [&str; 52] = [
     "TINKER_API_KEY",
     "VERCEL_TOKEN",
     "VERCEL_OIDC_TOKEN",
+    "AWS_PROFILE",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+    "ORX_SAGEMAKER_ROLE_ARN",
+    "ORX_SAGEMAKER_S3_URI",
+    "ORX_SAGEMAKER_REGION",
     "CLAUDECODE",
     "CLAUDE_CODE_ENTRYPOINT",
     "CODEX_THREAD_ID",

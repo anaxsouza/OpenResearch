@@ -48,6 +48,9 @@ Modal checks the local SDK and credential presence; it does not verify token
 validity with Modal.
 Vercel Sandbox likewise checks the local SDK and that `VERCEL_OIDC_TOKEN`, or
 all of `VERCEL_TOKEN`, `VERCEL_TEAM_ID` and `VERCEL_PROJECT_ID`, are present.
+AWS SageMaker checks the role and S3 settings, then asks AWS who the
+credentials are and whether they reach the bucket; it does not check the role
+or training quotas.
 
 HF, Tinker and Modal credentials can come from
 `orx compute configure modal --credentials-file -` (stdin; likewise `hf` and

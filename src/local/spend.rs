@@ -11,7 +11,7 @@ use crate::local::usage::{AgentSpend, BackendSpend, ChatCompute, PlanUsage, Usag
 use crate::store::{BilledRun, Cost, Store};
 
 /// Backends that bill for running time and have a price to read. The user's own machines and
-/// clusters cost nothing orx can see; Vercel and Tinker have no per-run price.
+/// clusters cost nothing orx can see; Vercel, SageMaker and Tinker have no per-run price.
 pub(crate) const BILLED: [&str; 3] = ["openresearch_job", "hf_job", "modal_job"];
 
 /// Billed backends whose price is a list price, still readable after a run ends; a box's price
