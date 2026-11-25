@@ -31,7 +31,7 @@ use crate::error::{anyhow, Result};
 /// Exit 3 = `boto3` isn't importable, 6 = refused (`jobs::Refused` on stderr),
 /// 7 = no AWS credentials found.
 const LAUNCHER: &str = r#"
-import sys, json, re, time, shlex
+import sys, json, os, re, time, shlex
 
 GROUP = "/aws/sagemaker/TrainingJobs"
 CHANNEL = "orx"
@@ -62,7 +62,8 @@ def _refuse(status, message):
 
 def _session(region):
     boto3, errors = _sdk()
-    session = boto3.session.Session(region_name=region or None)
+    # boto3 reads AWS_DEFAULT_REGION but not AWS_REGION, which the other AWS SDKs use.
+    session = boto3.session.Session(region_name=region or os.environ.get("AWS_REGION") or None)
     if not session.region_name:
         _refuse(None, "No AWS region is set. Set ORX_SAGEMAKER_REGION (or AWS_REGION), or a "
                       "region in your AWS profile.")
@@ -350,6 +351,14 @@ fn launcher_env() -> Vec<(String, String)> {
     launcher_overrides(|k| std::env::var(k).ok(), crate::config::synced_env_var)
 }
 
+/// An empty inherited value is unset to orx but names a profile "" to boto3.
+fn blank_aws_keys() -> Vec<&'static str> {
+    AWS_KEYS
+        .into_iter()
+        .filter(|key| std::env::var(key).is_ok_and(|v| v.trim().is_empty()))
+        .collect()
+}
+
 /// The job runs as the execution role; it gets neither the caller's AWS keys nor orx's settings.
 pub fn strip_credentials(env: &mut HashMap<String, String>) {
     for key in AWS_KEYS.into_iter().chain([ROLE_ARN, S3_URI, REGION]) {
@@ -465,6 +474,9 @@ async fn launcher_capture(
     fence: Option<&crate::engine::Fence<'_>>,
 ) -> Result<Vec<u8>> {
     let mut cmd = crate::process::tokio_command(SAGEMAKER_ENV.interpreter());
+    for key in blank_aws_keys() {
+        cmd.env_remove(key);
+    }
     cmd.arg("-c")
         .arg(LAUNCHER)
         .args(args)
@@ -668,7 +680,11 @@ pub async fn stream_logs(
 ) -> Result<u64> {
     use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, BufReader};
 
-    let mut child = crate::process::tokio_command(SAGEMAKER_ENV.interpreter())
+    let mut cmd = crate::process::tokio_command(SAGEMAKER_ENV.interpreter());
+    for key in blank_aws_keys() {
+        cmd.env_remove(key);
+    }
+    let mut child = cmd
         .arg("-c")
         .arg(LAUNCHER)
         .args(["logs", name, region])
@@ -1138,6 +1154,23 @@ class session:
         assert!(
             error.to_string().contains("ORX_SAGEMAKER_REGION"),
             "{error}"
+        );
+        let out = fake.run(
+            &["status", "orx-r", ""],
+            "",
+            &[
+                ("AWS_REGION", "eu-west-1"),
+                ("FAKE_JOB", r#"{"TrainingJobStatus": "InProgress"}"#),
+            ],
+        );
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            serde_json::from_slice::<Value>(&out.stdout).unwrap()["region"],
+            "eu-west-1"
         );
         let out = fake.run(
             &["status", "orx-r", "sa-east-1"],
