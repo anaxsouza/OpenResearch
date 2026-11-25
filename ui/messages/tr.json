@@ -16,6 +16,7 @@
   "chat_messages_feed": "Mesajlar",
   "settings_key_from": "Anahtar kaynağı",
   "settings_token_from": "Token kaynağı",
+  "settings_sagemaker_from": "Rol ve S3 konumu kaynağı:",
   "settings_environment_tab": "Ortam sekmesi",
   "settings_cpu_cores": "CPU çekirdekleri: {count}",
   "settings_gpu_count": "GPU × {count}",

@@ -16,6 +16,7 @@
   "chat_messages_feed": "메시지",
   "settings_key_from": "키 발급처",
   "settings_token_from": "토큰 발급처",
+  "settings_sagemaker_from": "역할과 S3 위치 출처:",
   "settings_environment_tab": "환경 탭",
   "settings_cpu_cores": "CPU 코어: {count}",
   "settings_gpu_count": "GPU × {count}",

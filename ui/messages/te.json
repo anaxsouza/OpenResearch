@@ -16,6 +16,7 @@
   "chat_messages_feed": "సందేశాలు",
   "settings_key_from": "కీ మూలం:",
   "settings_token_from": "టోకెన్ మూలం:",
+  "settings_sagemaker_from": "రోల్ మరియు S3 స్థానం ఇక్కడి నుండి:",
   "settings_environment_tab": "ఎన్విరాన్‌మెంట్ ట్యాబ్",
   "settings_cpu_cores": "CPU కోర్‌లు: {count}",
   "settings_gpu_count": "GPU × {count}",

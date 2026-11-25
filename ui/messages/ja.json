@@ -16,6 +16,7 @@
   "chat_messages_feed": "メッセージ",
   "settings_key_from": "キーの取得元",
   "settings_token_from": "トークンの取得元",
+  "settings_sagemaker_from": "ロールと S3 の場所の設定元:",
   "settings_environment_tab": "環境タブ",
   "settings_cpu_cores": "CPU コア: {count}",
   "settings_gpu_count": "GPU × {count}",

@@ -16,6 +16,7 @@
   "chat_messages_feed": "消息",
   "settings_key_from": "密钥来自",
   "settings_token_from": "令牌来自",
+  "settings_sagemaker_from": "角色和 S3 位置来自",
   "settings_environment_tab": "环境标签页",
   "settings_cpu_cores": "{count} 个 CPU 核心",
   "settings_gpu_count": "{count} 个 GPU",

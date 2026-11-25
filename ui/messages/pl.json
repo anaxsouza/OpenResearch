@@ -19,6 +19,7 @@
   "chat_messages_feed": "Wiadomości",
   "settings_key_from": "Klucz z",
   "settings_token_from": "Token z",
+  "settings_sagemaker_from": "Rola i lokalizacja S3 z",
   "settings_environment_tab": "Karta środowiska",
   "settings_cpu_cores": "Rdzenie CPU: {count}",
   "settings_gpu_count": "GPU × {count}",

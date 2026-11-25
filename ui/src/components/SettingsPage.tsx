@@ -1832,7 +1832,7 @@ function SageMakerSection() {
       )}
       {s.error && <p className={COMPUTE_DIAGNOSTIC_CLASS_NAME}>{s.error}</p>}
       {locked && <p className={SETTINGS_NOTE_CLASS_NAME}>{m.settings_sagemaker_env_override()}</p>}
-      <p className={SETTINGS_NOTE_CLASS_NAME}>{m.settings_sagemaker_credentials_help()}</p>
+      <p className="m-0 mt-3 text-sm text-subtext">{m.settings_sagemaker_credentials_help()}</p>
       <form className="mt-5 flex flex-col gap-4" onSubmit={submit}>
         <label className="flex flex-col gap-2 text-sm font-medium text-subtext">
           {m.settings_sagemaker_role_arn()}
@@ -3226,7 +3226,7 @@ function TargetTile({
       <span id={summaryId} className="mt-2 line-clamp-2 min-h-8 text-xs leading-normal text-subtext">
         {target.fromEnvironmentTab ? (
           <>
-            {target.id === "tinker" ? m.settings_key_from() : m.settings_token_from()}{" "}
+            {target.id === "tinker" ? m.settings_key_from() : target.id === "sagemaker" ? m.settings_sagemaker_from() : m.settings_token_from()}{" "}
             <button
               type="button"
               className="relative z-20 text-accent-blue-strong underline-offset-2 hover:underline"

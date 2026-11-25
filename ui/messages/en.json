@@ -16,6 +16,7 @@
   "chat_messages_feed": "Messages",
   "settings_key_from": "Key from",
   "settings_token_from": "Token from",
+  "settings_sagemaker_from": "Role and S3 location from",
   "settings_environment_tab": "Environment tab",
   "settings_cpu_cores": "CPU cores: {count}",
   "settings_gpu_count": "GPU × {count}",

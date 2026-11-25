@@ -16,6 +16,7 @@
   "chat_messages_feed": "پیام‌ها",
   "settings_key_from": "کلید از",
   "settings_token_from": "توکن از",
+  "settings_sagemaker_from": "نقش و مکان S3 از",
   "settings_environment_tab": "زبانهٔ محیط",
   "settings_cpu_cores": "{count} هستهٔ CPU",
   "settings_gpu_count": "{count} پردازندهٔ گرافیکی",

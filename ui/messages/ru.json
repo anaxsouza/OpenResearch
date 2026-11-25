@@ -16,6 +16,7 @@
   "chat_messages_feed": "Сообщения",
   "settings_key_from": "Ключ из",
   "settings_token_from": "Токен из",
+  "settings_sagemaker_from": "Роль и расположение S3 из",
   "settings_environment_tab": "вкладки «Окружение»",
   "settings_cpu_cores": "Ядра CPU: {count}",
   "settings_gpu_count": "GPU × {count}",

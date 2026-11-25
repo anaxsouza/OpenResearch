@@ -16,6 +16,7 @@
   "chat_messages_feed": "संदेश",
   "settings_key_from": "की स्रोत",
   "settings_token_from": "टोकन स्रोत",
+  "settings_sagemaker_from": "रोल और S3 स्थान यहाँ से:",
   "settings_environment_tab": "एनवायरनमेंट टैब",
   "settings_cpu_cores": "CPU कोर: {count}",
   "settings_gpu_count": "GPU × {count}",
