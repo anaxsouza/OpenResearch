@@ -6,8 +6,9 @@ AWS account, billed there per second of instance time. SageMaker releases the
 instance when the job ends, fails, reaches its timeout or is stopped, so nothing
 keeps billing if orx quits.
 
-Authentication uses the user's AWS credentials as boto3 finds them: `AWS_PROFILE`
-(including IAM Identity Center profiles after `aws sso login`), or
+Authentication uses the user's AWS credentials as the AWS SDK finds them:
+`AWS_PROFILE` (including IAM Identity Center profiles after `aws sso login`, and
+`aws login`), or
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. It also needs
 `ORX_SAGEMAKER_ROLE_ARN`, the execution role the job runs as, and
 `ORX_SAGEMAKER_S3_URI`, where runs stage their input and write their output.

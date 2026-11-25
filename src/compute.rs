@@ -506,7 +506,7 @@ backend_adapter!(
         if let Err(error) = crate::jobs::sagemaker::resolve_flavor(args.flavor.as_deref()) {
             return Ok(not_ready(error.to_string()));
         }
-        crate::jobs::sagemaker::preflight(&args.caller_python_overrides).await?;
+        crate::jobs::sagemaker::preflight().await?;
         ready()
     },
     prepare | args,

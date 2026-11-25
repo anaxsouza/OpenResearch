@@ -697,9 +697,6 @@ fn observation_error(error: crate::error::Error) -> Observation {
         "(unrecognizedclientexception)",
         "(invalidclienttokenid)",
         "(accessdenied",
-        "tokenretrievalerror:",
-        "ssotokenloaderror:",
-        "unauthorizedssotokenerror:",
         "no aws credentials",
     ]
     .iter()

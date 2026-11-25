@@ -365,12 +365,9 @@ pub(super) async fn sagemaker_settings_json() -> Value {
     let (identity, error) = match sagemaker::config() {
         Err(_) if untouched => (None, None),
         Err(error) => (None, Some(error.to_string())),
-        Ok(config) => match sagemaker::ensure_env().await {
+        Ok(config) => match sagemaker::check(&config).await {
+            Ok(identity) => (Some(identity), None),
             Err(error) => (None, Some(error.to_string())),
-            Ok(()) => match sagemaker::check(&config).await {
-                Ok(identity) => (Some(identity), None),
-                Err(error) => (None, Some(error.to_string())),
-            },
         },
     };
     json!({
@@ -2184,7 +2181,7 @@ pub(crate) async fn check(
             Ok(()) => json!({"ready": true}),
             Err(error) => json!({"ready": false, "error": error.to_string()}),
         },
-        "sagemaker" => match sagemaker::preflight(caller_python_overrides).await {
+        "sagemaker" => match sagemaker::preflight().await {
             Ok(()) => json!({"ready": true}),
             Err(error) => json!({"ready": false, "error": error.to_string()}),
         },

@@ -3,7 +3,7 @@ use std::process::Command;
 
 /// Variables that would lead a launched `orx` or agent to the developer's own
 /// state, credentials or session: `config::REDIRECT_VARS` and `PROVIDER_VARS`.
-const CLEARED: [&str; 63] = [
+const CLEARED: [&str; 64] = [
     "ORX_DATA_DIR",
     "ORX_CACHE_DIR",
     "OPENCODE_CONFIG",
@@ -18,6 +18,7 @@ const CLEARED: [&str; 63] = [
     "MODAL_CONFIG_PATH",
     "AWS_CONFIG_FILE",
     "AWS_SHARED_CREDENTIALS_FILE",
+    "AWS_ENDPOINT_URL",
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_BASE_URL",

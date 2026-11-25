@@ -48,7 +48,6 @@ impl Api for SageMakerAccount {
         spec.env
             .extend(crate::config::launch_env(&intent.run).map_err(api::rejected)?);
         sagemaker::strip_credentials(&mut spec.env);
-        sagemaker::ensure_env().await.map_err(api::rejected)?;
         let submitted = sagemaker::run_job(&spec, Some(fence))
             .await
             .map_err(api::launch_error)?;

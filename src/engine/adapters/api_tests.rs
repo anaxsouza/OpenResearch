@@ -118,6 +118,7 @@ async fn isolated() -> Option<PathBuf> {
         State(root): State<PathBuf>,
         method: axum::http::Method,
         uri: axum::http::Uri,
+        request_headers: axum::http::HeaderMap,
         body: axum::body::Bytes,
     ) -> axum::response::Response {
         use axum::response::IntoResponse;
@@ -128,6 +129,15 @@ async fn isolated() -> Option<PathBuf> {
             .open(root.join("http.log"))
             .unwrap();
         writeln!(requests, "{method} {}", uri.path()).unwrap();
+        if let Some(target) = request_headers
+            .get("x-amz-target")
+            .and_then(|v| v.to_str().ok())
+        {
+            return aws_json(&root, target, &body);
+        }
+        if request_headers.contains_key("x-amz-content-sha256") {
+            return s3_object(&root, &method, uri.path(), &request_headers, &body);
+        }
         let headers = axum::http::HeaderMap::new();
         if uri.path().ends_with("/logs") && root.join("sse").is_dir() {
             return sse(&root, uri.query().unwrap_or_default());
@@ -277,12 +287,250 @@ async fn isolated() -> Option<PathBuf> {
     std::env::set_var("PATH", path);
     std::env::set_var("ORX_API_ROOT", &root);
     std::env::set_var("ORX_DATA_DIR", root.join("store"));
+    std::env::set_var("AWS_ENDPOINT_URL", &endpoint);
+    std::env::set_var("AWS_ACCESS_KEY_ID", "fake");
+    std::env::set_var("AWS_SECRET_ACCESS_KEY", "fake");
+    std::env::set_var("AWS_REGION", "us-east-1");
     std::env::set_var("HF_ENDPOINT", endpoint);
     std::env::set_var("HF_TOKEN", "fake");
     std::env::set_var("ORX_MODAL_PYTHON", root.join("bin/modal-python"));
     std::env::set_var("ORX_VERCEL_PYTHON", root.join("bin/vercel-python"));
-    std::env::set_var("ORX_SAGEMAKER_PYTHON", root.join("bin/sagemaker-python"));
     Some(root)
+}
+
+/// SageMaker and CloudWatch Logs as their JSON protocol, served from files the test writes:
+/// `inspect-status` 404 is a job SageMaker doesn't know, `inspect-error` a service error as
+/// `{"status", "type", "message"}`, `inspect-response.json` the described job, `signal-log`
+/// the job's log. Calls are recorded in `aws.log`; `CreateTrainingJob` keeps its body.
+fn aws_json(root: &Path, target: &str, body: &[u8]) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    use std::io::Write;
+    let reply = |status: u16, value: Value| {
+        (
+            axum::http::StatusCode::from_u16(status).unwrap(),
+            [("content-type", "application/x-amz-json-1.1")],
+            value.to_string(),
+        )
+            .into_response()
+    };
+    writeln!(
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(root.join("aws.log"))
+            .unwrap(),
+        "{target}"
+    )
+    .unwrap();
+    let operation = target.rsplit('.').next().unwrap_or(target);
+    if operation.ends_with("TrainingJob") && operation != "CreateTrainingJob" {
+        if std::fs::read_to_string(root.join("inspect-status")).is_ok_and(|s| s.trim() == "404") {
+            return reply(
+                400,
+                json!({"__type":"ValidationException", "message":"Requested resource not found."}),
+            );
+        }
+        if let Ok(error) = std::fs::read_to_string(root.join("inspect-error")) {
+            let error: Value = serde_json::from_str(&error).unwrap();
+            return reply(
+                error["status"].as_u64().unwrap() as u16,
+                json!({"__type": error["type"], "message": error["message"]}),
+            );
+        }
+    }
+    match operation {
+        "CreateTrainingJob" => {
+            std::fs::write(root.join("create-training-job.json"), body).unwrap();
+            reply(
+                200,
+                json!({"TrainingJobArn":"arn:aws:sagemaker:us-east-1:123456789012:training-job/job"}),
+            )
+        }
+        "DescribeTrainingJob" => {
+            let described = std::fs::read_to_string(root.join("inspect-response.json"))
+                .ok()
+                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                .filter(|v| v.get("TrainingJobStatus").is_some())
+                .unwrap_or_else(
+                    || json!({"TrainingJobStatus":"Completed", "SecondaryStatus":"Completed"}),
+                );
+            reply(200, described)
+        }
+        "StopTrainingJob" => reply(200, json!({})),
+        "DescribeLogStreams" => {
+            let request: Value = serde_json::from_slice(body).unwrap();
+            let stream = format!(
+                "{}algo-1-1",
+                request["logStreamNamePrefix"].as_str().unwrap()
+            );
+            reply(200, json!({"logStreams":[{"logStreamName": stream}]}))
+        }
+        "GetLogEvents" => {
+            let request: Value = serde_json::from_slice(body).unwrap();
+            if request.get("nextToken").is_some() {
+                return reply(200, json!({"events":[], "nextForwardToken":"f/1"}));
+            }
+            let text = std::fs::read_to_string(root.join("signal-log")).unwrap_or_default();
+            let events: Vec<Value> = text
+                .lines()
+                .enumerate()
+                .map(|(i, line)| json!({"timestamp": i, "message": line}))
+                .collect();
+            reply(200, json!({"events": events, "nextForwardToken":"f/1"}))
+        }
+        other => reply(
+            400,
+            json!({"__type":"UnknownOperationException", "message": other}),
+        ),
+    }
+}
+
+/// Path-style S3 object writes and deletes, recorded one JSON line each in `s3.log`.
+fn s3_object(
+    root: &Path,
+    method: &axum::http::Method,
+    path: &str,
+    headers: &axum::http::HeaderMap,
+    body: &[u8],
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    use std::io::Write;
+    let sse = headers
+        .get("x-amz-server-side-encryption")
+        .and_then(|v| v.to_str().ok());
+    let chunked = headers
+        .get("content-encoding")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("aws-chunked"));
+    // aws-chunked: `<hex size>;chunk-signature=…\r\n<bytes>\r\n` until a zero-size chunk.
+    let mut decoded = Vec::new();
+    let body = if chunked {
+        let mut rest = body;
+        while let Some(end) = rest.windows(2).position(|w| w == b"\r\n") {
+            let header = std::str::from_utf8(&rest[..end]).unwrap();
+            let size = usize::from_str_radix(header.split(';').next().unwrap(), 16).unwrap();
+            if size == 0 {
+                break;
+            }
+            decoded.extend_from_slice(&rest[end + 2..end + 2 + size]);
+            rest = &rest[end + 4 + size..];
+        }
+        &decoded[..]
+    } else {
+        body
+    };
+    writeln!(
+        std::fs::OpenOptions::new().create(true).append(true).open(root.join("s3.log")).unwrap(),
+        "{}",
+        json!({"method": method.as_str(), "path": path, "sse": sse, "body": String::from_utf8_lossy(body)})
+    )
+    .unwrap();
+    ([("etag", "\"fake\"")], "").into_response()
+}
+
+#[tokio::test]
+async fn sagemaker_submit_keeps_secrets_out_of_the_training_job() {
+    let Some(root) = isolated().await else {
+        return;
+    };
+    let archive = root.join("source.tar");
+    std::fs::write(&archive, b"tar bytes").unwrap();
+    let spec = crate::jobs::sagemaker::SageMakerJobSpec {
+        name: "orx-run-1".into(),
+        script: "python train.py".into(),
+        image: None,
+        instance_type: "ml.g5.xlarge".into(),
+        env: std::collections::HashMap::from([("HF_TOKEN".to_string(), "s3cr'et".to_string())]),
+        timeout_seconds: 3600,
+        volume_gb: 50,
+        role_arn: "arn:aws:iam::123456789012:role/orx".into(),
+        s3_uri: "s3://bucket/research/".into(),
+        region: Some("sa-east-1".into()),
+        tags: std::collections::HashMap::from([("or_run".to_string(), "run-1".to_string())]),
+        source_archive: Some(archive),
+    };
+    let submitted = crate::jobs::sagemaker::run_job(&spec, None).await.unwrap();
+    assert_eq!(submitted.region, "sa-east-1");
+    assert_eq!(
+        submitted.input_uri,
+        "s3://bucket/research/orx/orx-run-1/input/"
+    );
+
+    let puts: Vec<Value> = std::fs::read_to_string(root.join("s3.log"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let put = |key: &str| {
+        puts.iter()
+            .find(|p| p["path"] == format!("/bucket/research/orx/orx-run-1/input/{key}"))
+            .unwrap_or_else(|| panic!("no PUT of {key}: {puts:?}"))
+    };
+    assert_eq!(put("source.tar")["body"], "tar bytes");
+    let env = put("env.sh");
+    assert_eq!(env["sse"], "AES256");
+    assert!(
+        env["body"]
+            .as_str()
+            .unwrap()
+            .contains("export HF_TOKEN='s3cr'\"'\"'et'\n"),
+        "{env}"
+    );
+    assert!(put("run.sh")["body"]
+        .as_str()
+        .unwrap()
+        .ends_with("\npython train.py"));
+
+    let create: Value =
+        serde_json::from_slice(&std::fs::read(root.join("create-training-job.json")).unwrap())
+            .unwrap();
+    assert!(!create.to_string().contains("s3cr"), "{create}");
+    assert!(create.get("Environment").is_none(), "{create}");
+    assert_eq!(
+        create["AlgorithmSpecification"]["TrainingImage"],
+        "763104351884.dkr.ecr.sa-east-1.amazonaws.com/pytorch-training:2.5.1-gpu-py311-cu124-ubuntu22.04-sagemaker"
+    );
+    assert_eq!(
+        create["OutputDataConfig"]["S3OutputPath"],
+        "s3://bucket/research/orx"
+    );
+    assert_eq!(create["StoppingCondition"]["MaxRuntimeInSeconds"], 3600);
+    assert_eq!(create["ResourceConfig"]["InstanceCount"], 1);
+    assert_eq!(create["Tags"], json!([{"Key":"or_run", "Value":"run-1"}]));
+}
+
+#[tokio::test]
+async fn sagemaker_refused_create_fails_the_launch_for_certain() {
+    let Some(root) = isolated().await else {
+        return;
+    };
+    let spec = crate::jobs::sagemaker::SageMakerJobSpec {
+        name: "orx-run-1".into(),
+        script: "true".into(),
+        image: None,
+        instance_type: "ml.g5.xlarge".into(),
+        env: Default::default(),
+        timeout_seconds: 60,
+        volume_gb: 50,
+        role_arn: "arn:aws:iam::123456789012:role/orx".into(),
+        s3_uri: "s3://bucket".into(),
+        region: Some("af-south-1".into()),
+        tags: Default::default(),
+        source_archive: None,
+    };
+    let error = crate::jobs::sagemaker::run_job(&spec, None)
+        .await
+        .err()
+        .unwrap();
+    assert!(
+        error.downcast_ref::<crate::jobs::Refused>().is_some(),
+        "{error}"
+    );
+    assert!(error.to_string().contains("--image"), "{error}");
+    assert!(
+        !root.join("s3.log").exists(),
+        "a refused launch staged nothing"
+    );
 }
 
 #[tokio::test]
@@ -3317,12 +3565,7 @@ async fn providers_reject_credentials_and_preserve_numeric_exits() {
     let Some(root) = isolated().await else {
         return;
     };
-    for launcher in [
-        "modal-python",
-        "vercel-python",
-        "sagemaker-python",
-        "kubectl",
-    ] {
+    for launcher in ["modal-python", "vercel-python", "kubectl"] {
         script(
             &root.join("bin").join(launcher),
             &format!(
@@ -3345,7 +3588,7 @@ esac
         ("hf_job", json!({"id":"job", "status":{"stage":"ERROR", "message":"Job failed with exit code: 7. Reason: Error"}}), ""),
         ("vercel_job", json!({"stage":"ERROR", "exitCode":7}), "vercel.sandbox._internal.errors.SandboxApiError: HTTP 403: Not authorized (code=forbidden)"),
         ("modal_job", json!({"stage":"ERROR", "exitCode":7}), "modal.exception.AuthError: Token is not authorized"),
-        ("sagemaker_job", json!({"stage":"ERROR", "exitCode":7, "region":"sa-east-1"}), "botocore.exceptions.ClientError: An error occurred (ExpiredTokenException) when calling the DescribeTrainingJob operation: The security token included in the request is expired"),
+        ("sagemaker_job", json!({"TrainingJobStatus":"Failed", "SecondaryStatus":"Failed", "FailureReason":"AlgorithmError: , exit code: 7"}), r#"{"status":400, "type":"ExpiredTokenException", "message":"The security token included in the request is expired"}"#),
         ("k8s_job", json!({"status":{"conditions":[{"type":"Failed","status":"True","reason":"BackoffLimitExceeded"}]}}), "Error from server (Forbidden): jobs.batch is forbidden"),
     ] {
         let target = if kind == "ray_job" {
@@ -3407,10 +3650,10 @@ esac
                 ("connection timed out", false),
             ],
             "sagemaker_job" => vec![
-                ("botocore.exceptions.TokenRetrievalError: Error when retrieving token from sso: Token has expired and refresh failed", true),
-                ("botocore.exceptions.ClientError: An error occurred (AccessDeniedException) when calling the DescribeTrainingJob operation: User is not authorized", true),
+                (r#"{"status":400, "type":"AccessDeniedException", "message":"User is not authorized"}"#, true),
+                (r#"{"status":403, "type":"UnrecognizedClientException", "message":"The security token included in the request is invalid"}"#, true),
                 (rejection, true),
-                ("botocore.exceptions.EndpointConnectionError: Could not connect to the endpoint URL", false),
+                (r#"{"status":400, "type":"ResourceLimitExceeded", "message":"Too many requests in flight"}"#, false),
             ],
             "modal_job" => vec![
                 ("GRPCError: (<Status.UNAUTHENTICATED: 16>, 'Token rejected')", true),
@@ -3476,6 +3719,7 @@ esac
             "ray_job" => json!({"status":"FAILED", "driver_exit_code":137}),
             "hf_job" => json!({"id":"job", "status":{"stage":"ERROR", "message":"Job failed with exit code: 137. Reason: Error"}}),
             "k8s_job" => response,
+            "sagemaker_job" => json!({"TrainingJobStatus":"Failed", "SecondaryStatus":"Failed", "FailureReason":"AlgorithmError: , exit code: 137"}),
             _ => json!({"stage":"ERROR", "exitCode":137}),
         };
         std::fs::write(root.join("inspect-response.json"), response.to_string()).unwrap();
@@ -3497,7 +3741,7 @@ async fn provider_404s_end_runs_only_when_they_prove_deletion() {
     let Some(root) = isolated().await else {
         return;
     };
-    for launcher in ["modal-python", "vercel-python", "sagemaker-python"] {
+    for launcher in ["modal-python", "vercel-python"] {
         script(
             &root.join("bin").join(launcher),
             "#!/bin/sh\ncase \"$3\" in status|cancel) printf '{\"missing\":true}' ;; *) exit 1 ;; esac\n",
@@ -4529,12 +4773,10 @@ async fn each_provider_replays_signal_rows_and_spend_without_double_counting() {
     let Some(root) = isolated().await else {
         return;
     };
-    for launcher in ["vercel-python", "sagemaker-python"] {
-        script(
-            &root.join("bin").join(launcher),
-            "#!/bin/sh\ncat \"$ORX_API_ROOT/signal-log\"\n",
-        );
-    }
+    script(
+        &root.join("bin/vercel-python"),
+        "#!/bin/sh\ncat \"$ORX_API_ROOT/signal-log\"\n",
+    );
     script(
         &root.join("bin/modal-python"),
         r#"#!/usr/bin/env python3
